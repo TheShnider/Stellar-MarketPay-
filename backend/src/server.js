@@ -16,6 +16,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const compressionMiddleware = require("./middleware/compression");
 const { WebSocketServer } = require("ws");
 const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
@@ -184,6 +185,7 @@ app.locals.indexerService = indexerService;
 app.locals.broadcastRealtime = broadcastRealtime;
  
 // Middleware
+app.use(compressionMiddleware());
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(express.json({ limit: "20kb" }));

@@ -179,6 +179,7 @@ jest.mock("../../services/cacheService", () => require("../../utils/cache"));
 
 // ─── Now load the app ─────────────────────────────────────────────────────────
 const request = require("supertest");
+const jobService = require("../../services/jobService");
 
 let app;
 let cache;
@@ -226,6 +227,27 @@ describe("GET /api/jobs — Redis caching", () => {
 
     const second = await request(app).get("/api/jobs?limit=10&status=open");
     expect(second.headers["x-cache"]).toBe("HIT");
+  });
+
+  it("compresses large JSON responses from the mounted jobs route", async () => {
+    jobService.listJobs.mockResolvedValueOnce({
+      jobs: Array.from({ length: 50 }, (_, index) => ({
+        id: `job-${index}`,
+        title: `Sample job listing ${index}`,
+        description: "A".repeat(200),
+      })),
+      nextCursor: null,
+      total: 50,
+    });
+
+    const res = await request(app)
+      .get("/api/jobs")
+      .set("Accept-Encoding", "gzip");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-encoding"]).toBe("gzip");
+    expect(res.headers["vary"]).toMatch(/Accept-Encoding/);
+    expect(res.body.data).toHaveLength(50);
   });
 });
 

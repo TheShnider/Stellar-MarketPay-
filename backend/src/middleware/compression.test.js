@@ -122,6 +122,22 @@ describe("compression middleware", () => {
     expect(res.text).toBe("Hello World");
   });
 
+  it("does not compress Server-Sent Events", async () => {
+    const app = express();
+    app.use(compressionMiddleware());
+    app.get("/events", (_req, res) => {
+      res.type("text/event-stream").send(`data: ${"A".repeat(2000)}\n\n`);
+    });
+
+    const res = await request(app)
+      .get("/events")
+      .set("Accept-Encoding", "gzip");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/event-stream/);
+    expect(res.headers["content-encoding"]).toBeUndefined();
+  });
+
   it("preserves Content-Type and sets Vary header", async () => {
     const app = express();
     app.use(compressionMiddleware());
