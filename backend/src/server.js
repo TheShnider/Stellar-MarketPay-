@@ -62,6 +62,8 @@ const { setWebsocketConnections, recordRejectedWebsocketUpgrade } = require("./m
 const { startEscrowTimeoutChecker } = require("./services/escrowService");
 const { scheduleStatsRefresh } = require("./services/statsService");
 const { startPushSubscriptionPurge } = require("./services/pushSubscriptionService");
+const { structuredErrorHandler } = require("./utils/errors");
+const { xRequestIdMiddleware } = require("./utils/logger");
  
 // Start audit worker — processes fire-and-forget audit log writes
 require("./workers/auditWorker");
@@ -185,6 +187,7 @@ app.locals.indexerService = indexerService;
 app.locals.broadcastRealtime = broadcastRealtime;
  
 // Middleware
+app.use(xRequestIdMiddleware);
 app.use(compressionMiddleware());
 app.use(helmet());
 app.use(morgan("dev"));
@@ -245,13 +248,7 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
 });
  
-app.use((err, req, res, _next) => {
-  console.error("[Error]", err.message);
- 
-  res.status(err.status || 500).json({
-    error: err.message || "Internal server error",
-  });
-});
+app.use(structuredErrorHandler);
  
 const wsServer = new WebSocketServer({ noServer: true });
  

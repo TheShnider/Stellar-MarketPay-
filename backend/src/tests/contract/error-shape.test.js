@@ -96,23 +96,65 @@ describe("Error response shape", () => {
     const {
       structuredErrorHandler,
       ErrorCodes,
+      createError,
     } = require("../../utils/errors");
-    const err = Object.assign(new Error("something broke"), {
-      status: 422,
-      code: ErrorCodes.VALIDATION_ERROR,
-      details: { field: "amount" },
-    });
+    const err = createError(
+      ErrorCodes.VALIDATION_ERROR,
+      "something broke",
+      422,
+      { field: "amount" },
+    );
     const res = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
     };
-    structuredErrorHandler(err, {}, res, jest.fn());
+    structuredErrorHandler(err, { requestId: "req-123" }, res, jest.fn());
     expect(res.status).toHaveBeenCalledWith(422);
     const body = res.json.mock.calls[0][0];
     expect(typeof body.error).toBe("string");
+    expect(body.error).toBe("something broke");
     expect(body.code).toBe(ErrorCodes.VALIDATION_ERROR);
     expect(body.details).toEqual({ field: "amount" });
+    expect(body.requestId).toBe("req-123");
     expect(body.error).not.toBeInstanceOf(Object);
+  });
+
+  it("5xx responses hide internal messages and include a request id", () => {
+    const { structuredErrorHandler } = require("../../utils/errors");
+    const err = new Error("database password and internal path");
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    structuredErrorHandler(err, { requestId: "req-500" }, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Internal server error",
+      requestId: "req-500",
+    });
+  });
+
+  it("does not expose messages from untyped 4xx errors", () => {
+    const { structuredErrorHandler } = require("../../utils/errors");
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    structuredErrorHandler(
+      Object.assign(new Error("private implementation detail"), { status: 400 }),
+      { requestId: "req-400" },
+      res,
+      jest.fn(),
+    );
+
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Request failed",
+      code: "INTERNAL_SERVER_ERROR",
+      requestId: "req-400",
+    });
   });
 
   it("rate-limiter response uses { error } not { message }", async () => {

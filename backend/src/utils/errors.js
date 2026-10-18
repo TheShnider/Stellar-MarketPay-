@@ -71,6 +71,9 @@ const ErrorCodes = {
   JSONB_SCHEMA_INVALID:         "JSONB_SCHEMA_INVALID",
 };
 
+const { createServiceLogger, logError } = require("./logger");
+const errorLogger = createServiceLogger("express-error-handler");
+
 /**
  * Create a structured error object.
  *
@@ -84,6 +87,7 @@ function createError(code, message, statusCode = 400, details) {
   const err = new Error(message);
   err.code = code;
   err.status = statusCode;
+  err.exposeMessage = true;
   if (details !== undefined) err.details = details;
   return err;
 }
@@ -98,21 +102,34 @@ function structuredErrorHandler(err, req, res, next) {
   void next; // silence eslint no-unused-vars
 
   const status = err.status || err.statusCode || 500;
-  const code   = err.code  || (status === 404 ? ErrorCodes.NOT_FOUND
-                             : status === 401 ? ErrorCodes.UNAUTHORIZED
-                             : status === 403 ? ErrorCodes.FORBIDDEN
-                             : status === 429 ? ErrorCodes.RATE_LIMITED
-                             : ErrorCodes.INTERNAL_SERVER_ERROR);
+  const requestId = req.requestId;
+  const safeMessage =
+    status < 500 && err.exposeMessage === true && typeof err.message === "string";
+  const code =
+    (safeMessage && err.code) ||
+    (status === 404 ? ErrorCodes.NOT_FOUND
+      : status === 401 ? ErrorCodes.UNAUTHORIZED
+        : status === 403 ? ErrorCodes.FORBIDDEN
+          : status === 429 ? ErrorCodes.RATE_LIMITED
+            : ErrorCodes.INTERNAL_SERVER_ERROR);
 
   const body = {
-    error: err.message || "Internal server error",
-    code,
+    error: safeMessage
+      ? err.message
+      : status >= 500
+        ? "Internal server error"
+        : "Request failed",
   };
 
-  if (err.details !== undefined) {
-    body.details = err.details;
+  if (status < 500) {
+    body.code = code;
+    if (safeMessage && err.details !== undefined) {
+      body.details = err.details;
+    }
   }
+  if (requestId) body.requestId = requestId;
 
+  logError(errorLogger, err, { operation: "express_error_handler", statusCode: status });
   res.status(status).json(body);
 }
 
